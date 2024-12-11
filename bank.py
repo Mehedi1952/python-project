@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import hashlib
 
 # Abstract base class for accounts (Abstraction)
 class BankAccount(ABC):
@@ -7,7 +8,7 @@ class BankAccount(ABC):
         self.__account_holder = account_holder
         self.__balance = balance
 
-    # Encapsulation: Getters for private attributes
+    # Getters for private attributes
     def get_account_number(self):
         return self.__account_number
 
@@ -17,7 +18,7 @@ class BankAccount(ABC):
     def get_balance(self):
         return self.__balance
 
-    # Encapsulation: Setter for updating balance
+    # Setter for updating balance
     def set_balance(self, balance):
         self.__balance = balance
 
@@ -81,13 +82,18 @@ class CurrentAccount(BankAccount):
         except ValueError as e:
             print(f"Error: {e}")
 
-# Bank System for managing multiple accounts
+# User Authentication and Bank System for managing multiple accounts
 class BankSystem:
     def __init__(self):
         self.accounts = {}
+        self.users = {}  # {username: {password_hash, account_number}}
+
+    # Hash password using SHA-256
+    def hash_password(self, password):
+        return hashlib.sha256(password.encode()).hexdigest()
 
     # Create a new account
-    def create_account(self, account_type, account_number, account_holder):
+    def create_account(self, account_type, account_number, account_holder, password):
         if account_number in self.accounts:
             print("Account already exists!")
         else:
@@ -99,22 +105,55 @@ class BankSystem:
                 print("Invalid account type!")
                 return
             self.accounts[account_number] = account
+            password_hash = self.hash_password(password)
+            self.users[account_holder] = {'password': password_hash, 'account_number': account_number}
             print(f"{account_type.capitalize()} account created successfully!")
+
+    # User login
+    def login(self, username, password):
+        if username in self.users:
+            stored_password = self.users[username]['password']
+            if stored_password == self.hash_password(password):
+                return self.users[username]['account_number']
+            else:
+                print("Invalid password!")
+        else:
+            print("User does not exist!")
+        return None
 
     # Retrieve an account
     def get_account(self, account_number):
         return self.accounts.get(account_number, None)
+
+    # Bank-to-Bank transaction
+    def transfer(self, from_account_number, to_account_number, amount):
+        try:
+            from_account = self.get_account(from_account_number)
+            to_account = self.get_account(to_account_number)
+            if not from_account or not to_account:
+                raise ValueError("Invalid account numbers.")
+            if amount <= 0:
+                raise ValueError("Transfer amount must be greater than zero.")
+            if from_account.get_balance() < amount:
+                raise ValueError("Insufficient balance.")
+            from_account.set_balance(from_account.get_balance() - amount)
+            to_account.set_balance(to_account.get_balance() + amount)
+            print(f"Transfer successful! New balance of {from_account_number}: {from_account.get_balance()}")
+        except ValueError as e:
+            print(f"Error: {e}")
 
     # Main system menu
     def run(self):
         while True:
             print("\n--- Bank Management System ---")
             print("1. Create Account")
-            print("2. View Account Details")
-            print("3. Deposit Money")
-            print("4. Withdraw Money")
-            print("5. Apply Interest (Savings Account)")
-            print("6. Exit")
+            print("2. Login")
+            print("3. View Account Details")
+            print("4. Deposit Money")
+            print("5. Withdraw Money")
+            print("6. Apply Interest (Savings Account)")
+            print("7. Transfer Money")
+            print("8. Exit")
 
             try:
                 choice = int(input("Enter your choice: "))
@@ -122,43 +161,60 @@ class BankSystem:
                     account_type = input("Enter account type (savings/current): ").lower()
                     account_number = input("Enter account number: ")
                     account_holder = input("Enter account holder name: ")
-                    self.create_account(account_type, account_number, account_holder)
+                    password = input("Enter password: ")
+                    self.create_account(account_type, account_number, account_holder, password)
 
                 elif choice == 2:
-                    account_number = input("Enter account number: ")
-                    account = self.get_account(account_number)
-                    if account:
-                        print(account)
-                    else:
-                        print("Account not found!")
+                    username = input("Enter username: ")
+                    password = input("Enter password: ")
+                    account_number = self.login(username, password)
+                    if account_number:
+                        while True:
+                            print(f"\nWelcome {username}! Your account: {account_number}")
+                            print("1. View Account Details")
+                            print("2. Deposit Money")
+                            print("3. Withdraw Money")
+                            print("4. Apply Interest (Savings Account)")
+                            print("5. Transfer Money")
+                            print("6. Logout")
 
-                elif choice == 3:
-                    account_number = input("Enter account number: ")
-                    account = self.get_account(account_number)
-                    if account:
-                        amount = float(input("Enter amount to deposit: "))
-                        account.deposit(amount)
-                    else:
-                        print("Account not found!")
+                            try:
+                                sub_choice = int(input("Enter your choice: "))
+                                if sub_choice == 1:
+                                    account = self.get_account(account_number)
+                                    print(account)
 
-                elif choice == 4:
-                    account_number = input("Enter account number: ")
-                    account = self.get_account(account_number)
-                    if account:
-                        amount = float(input("Enter amount to withdraw: "))
-                        account.withdraw(amount)
-                    else:
-                        print("Account not found!")
+                                elif sub_choice == 2:
+                                    amount = float(input("Enter amount to deposit: "))
+                                    account = self.get_account(account_number)
+                                    account.deposit(amount)
 
-                elif choice == 5:
-                    account_number = input("Enter account number: ")
-                    account = self.get_account(account_number)
-                    if isinstance(account, SavingsAccount):
-                        account.apply_interest()
-                    else:
-                        print("Interest can only be applied to savings accounts.")
+                                elif sub_choice == 3:
+                                    amount = float(input("Enter amount to withdraw: "))
+                                    account = self.get_account(account_number)
+                                    account.withdraw(amount)
 
-                elif choice == 6:
+                                elif sub_choice == 4:
+                                    account = self.get_account(account_number)
+                                    if isinstance(account, SavingsAccount):
+                                        account.apply_interest()
+
+                                elif sub_choice == 5:
+                                    to_account_number = input("Enter recipient account number: ")
+                                    amount = float(input("Enter amount to transfer: "))
+                                    self.transfer(account_number, to_account_number, amount)
+
+                                elif sub_choice == 6:
+                                    print("Logged out successfully!")
+                                    break
+
+                                else:
+                                    print("Invalid choice.")
+
+                            except ValueError as e:
+                                print(f"Error: {e}")
+
+                elif choice == 8:
                     print("Exiting the system. Goodbye!")
                     break
 
